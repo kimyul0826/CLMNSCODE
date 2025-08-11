@@ -1,0 +1,400 @@
+프로젝트 구조 설명
+
+1. 목표
+
+자동차의 다섯 부위
+(1) 앞도어 (frontdoor)
+(2) 뒤도어 (backdoor)
+(3) 프론트펜더 (frontfender)
+(4) 후드 (hood)
+(5) 트렁크리드 (trunklid)
+
+에 대한 사진을 보고 해당 부품이 부위별 규칙에 따라 교환품인지 아닌지 판단하는 것이 목표이다.
+
+각 부위별 불량 판단 기준은 다음과 같다.
+
+(1) 앞도어
+도어의 테두리쪽 실링의 패턴을 통해 분류한다.
+양품은 기계가 실링을 마감하여 실링이 균일하게 도포되어 있거나, 실링이 마감되는 부위가 깔끔하다.
+불량은 사람이 실링을 도포하여 균일하지 못하거나, 실링이 마감되는 부위가 이상하게 마감되어있다.
+또는, 특수 테이프를 이용하여 실링 부위에 붙인 형태를 볼 수 있다.
+
+실링 패턴은 도어에서 총 세부위로 나누어 볼 수 있다. 상단부, 중단부, 하단부로 나누어 볼 수 있고 각 부위별 패턴이 조금씩 다르다.
+세 부위별로 각각 양품인지 불량인지 판단하여 이후 세 부위의 판단 결과를 종합하여 도어의 최종 교환 여부를 판단하게 된다.
+
+(2) 뒤도어
+앞도어와 마찬가지로 도어의 테두리 쪽 실링 패턴을 통해 분류한다.
+다만, 앞도어와 달리 차종별 도어 프레임 형태가 상이하여 단순히 세 부위로 나누어 보기 어려워 보류한다.
+
+(3) 프론트펜더, 후드, 트렁크 리드
+이 세 부위는 각 부위에 존재하는 볼트의 모양새를 보고 판단한다.
+
+볼트가 풀렸다가 체결된 경우에, 볼트에 씌워진 페인트가 벗겨지며 볼트 헤드 부분이 녹슬어있는 경우 불량이다.
+반면 풀렸었던 흔적이 발견되지 않는 경우 양품이다.
+
+각 부위는 이미지 내에 판단해야하는 볼트가 정해져있다. 따라서 각 부위의 판단해야하는 프레임 내부에 존재하는 볼트만 양품인지 불량인지 판단하게 된다.
+지정된 프레임 외부에 있는 볼트의 경우에는 양불량 판단 기준으로 두지 않는다.
+
+프론트펜더 - 차종별 프레임의 모양새가 매우 다양하여 보류한다.
+후드 - 프레임 내부에 볼트가 두개 존재하여야 한다. 볼트 두개가 탐지되지 않는 경우 불량이며, 두개의 볼트중 하나의 볼트만 불량이어도 불량으로 간주한다.
+트렁크 리드 - 프레임형태의 종류를 SUV, 승용차의 프레임으로 나누어 볼 수 있으며 각 프레임 내에 볼트 두개가 탐지 되지 않거나 두개의 볼트 중 하나의 볼트만 불량이어도 불량으로 간주한다.
+
+2. 모델 구성
+
+모든 부위의 양불량 판단은 크게 두 부분으로 나누어 모델을 제작하게 된다.
+
+판단 영역 탐지 -> 해당 영역의 양불량 판단
+
+총 두 단계를 통해 모델을 구성한다.
+판단 영역을 탐지하는 것은 yolov5 모델을, 양불량 판단은 resnet 모델이 사용된다.
+
+부위별로 yolov5 모델과 resnet 모델을 만들게 된다. 다만, 볼트를 통해 판단하는 트렁크 리드, 후드, 프론트 펜더는 같은 모델을 통해 판단할 것이다.
+따라서 현재 제작할 모델은 아래와 같다.
+
+yolov5 
+- 앞도어 high, mid, low 탐지용
+- 프론트펜더, 트렁크 리드, 후드 bolt, frame 탐지용
+
+resnet
+- 앞도어 high 양불량
+- 앞도어 mid 양불량
+- 앞도어 low 양불량
+- 프론트펜더, 트렁크 리드, 후드 bolt 양불량
+
+resnet에서 불량은 0, 양품은 1로 학습하게 된다.
+
+앞도어의 경우 세 부위별 양불량 예측 결과가 나오기 때문에 예측 결과중 confidence score를 이용하여 random forest 모델을 학습시키고, 최종 결과를 예측하게 된다.
+
+3. 데이터셋 구성(라벨)
+
+(1) 앞도어
+
+앞도어 이미지에는 판단 기준에서 얘기했듯 총 세 부위를 라벨링한다.
+0 : high, 1: mid, 2: low
+
+(2) 뒤도어
+
+라벨 방식 논의중
+
+(3) 트렁크 리드, 후드, 프론트 펜더
+
+각 이미지에는 볼트와 판단 기준으로 쓰이는 볼트가 존재하는 프레임을 라벨링한다.
+0 : bolt, 1 : frame_1 (트렁크 리드-승용차), 2 : frame_2 (트렁크 리드-SUV), 3 : frame_3 : (후드)
+
+프론트 펜더의 프레임 경우 라벨링 논의중이다.
+
+4. 데이터셋 구조
+
+데이터 셋의 구조는 다음과 같다.
+
+{날짜} / {부위명} / {양불량 | good,bad} / {images, labels} / image.jpg or image.txt
+
+날짜는 YYYYMMDD
+부위명은 frontdoor, frontfender, trunklid, hood, backdoor
+양불량은 good, bad
+데이터는 images, labels
+각 폴더엔 .jpg, .png 나 .txt 파일이 존재한다.
+
+각 이미지 명 규칙은 다음과 같다.
+
+{양불량}_{차량 뒤 네자리}_{임의 라벨링 여부}_{부위 인덱스}_{고유 문자열}
+
+ex) bad_0251_1_7_53b06b08-b2cc-4415-9e72-7e390db9d59d.jpg
+
+임의 라벨링 여부에서 1은 원본, 2는 임의 라벨링이 되어있음을 뜻한다.
+
+부위별 인덱스는 아래와 같다.
+1 프론트펜더 우측
+2 앞도어 우측
+3 뒤도어 우측
+4 트렁크 리드 (전체이미지)
+5 뒤도어 좌측
+6 앞도어 좌측
+7 프론트펜더 좌측
+8 후드 (전체이미지)
+9 ?
+10 ?
+11 후드 좌측
+12 후드 우측
+13 트렁크 리드 좌측
+14 트렁크 리드 우측
+
+yolov5 는 각 날짜별, 부위별의 images와 labels 폴더를 이용하여 학습한다.
+
+resnet 은 각 이미지에서 labels 에 있는 좌표를 활용해 해당 영역을 crop 하여 학습하게 된다.
+crop된 이미지는 images, labels 폴더와 같은 위치에 crop_bad, crop_good 으로 저장된다.
+
+crop된 이미지명은 {원본 이미지명}_{yolo 인덱스}_{인덱스} 로 저장된다.
+
+yolo 인덱스는 라벨링의 인덱스를 뜻하고, 인덱스는 같은 라벨의 영역이 한 이미지 내에 여러개 존재할 때 0,1,2... 와 같이 붙여진다.
+
+crop된 이미지를 증강시킬 수도 있는데, 증강시킨 이미지는 crop_bad, crop_good 폴더와 같은 위치의 crop_bad_aug, crop_good_aug 폴더 내부에 {crop이미지명}_{aug방식} 으로 저장된다.
+
+ex) bad_0216_1_1_5a269cdf-35fe-4259-a086-7ccab92112ae_0_0_bright.jpg : 밝기 증강
+
+5. 프로젝트 구조
+
+위의 데이터셋은
+home/work/datasets/ 에 저장될 것이고,
+
+모델은
+home/work/code/ 에 저장될 것이다.
+
+코드를 구성할 때에는 항상 상대경로를 사용하도록 함
+
+6. 기능
+
+- yolov5 만 학습시
+data/CLMNS.yaml + hyp.yaml 필요
+yolov5/runs/{실험명}/
+
+-classmodel 만 학습시
+classmodel/runs/{실험명}/
+
+
+코드 사용법 & 생성 결과
+
+[1] yolov5
+
+1. train
+
+1-1. 사용 명령어
+
+python train.py --name train_name --data data.yaml --weights yolov5s.pt --hyp hyp.CLMNS.yaml --epochs 10 --batch-size 16 --imgsz 640 --optimizer Adam --device 0
+
+--name 규칙
+{부위명}_{데이터셋정보}
+ex) frontdoor_0728 : ~0728 까지의 앞도어 데이터셋
+
+1-2. 결과 저장 위치 : runs/trian/{실험명}/{실험명}_{타임스탬프}/
+1-2-1. --name 미지정 : 실험명 기본값 exp
+
+1-3. 결과물
+- weights: weights/best.pt, weights/last.pt
+- 설정 스냅샷: hyp.yaml, opt.yaml
+- 로그/지표: results.csv, results.png
+- 플롯: PR_curve.png, P_curve.png, R_curve.png, F1_curve.png, confusion_matrix.png
+- 배치 시각화: train_batch0.jpg, val_batch0.jpg 등
+
+2. val
+
+2-1. 사용 명령어
+
+python val.py --name val_name --task test --data data.yaml --weights best.pt --imgsz 640 --device 0 --verbose --save-txt --save-hybrid --save conf --save-json
+
+권장 사용법
+--name 지정시 : train 실험명(타임스탬프 포함)
+--name 미지정시 : home/work/code/yolov5/runs/train/{실험명}/{train 실험명}/weights/best.pt 사용
+
+2-2. 결과 저장 위치 : runs/val/{실험명}/{train 실험명}/
+
+2-3. 결과물
+
+2-4. 저장 경로 규칙(자동 설정)
+- 기본 저장 루트는 `runs/val`.
+- `--name`을 `{실험명}_{타임스탬프}` 형식으로 주면 자동으로 `runs/val/{실험명}/{실험명_타임스탬프}/`에 저장됨.
+  - 예: `--name frontdoor_250810_103012` → `runs/val/frontdoor/frontdoor_250810_103012/`
+- `--name`을 `실험명/트레인실험명` 형태로 주면 그대로 `runs/val/{실험명}/{트레인실험명}/`에 저장됨.
+  - 예: `--name frontdoor/frontdoor_250810_103012`
+- `--name`이 없고, `--weights`가 `runs/train/{실험명}/{트레인실험명}/weights/(best|last).pt` 경로면 해당 경로를 파싱해 동일 구조로 저장.
+- `--exist-ok`가 기본 False이므로 동일 경로가 있으면 뒤에 번호가 증가됨. 덮어쓰려면 `--exist-ok` 사용.
+- 저장물 예시: `labels/*.txt`, `val_batch*_labels.jpg`, `val_batch*_pred.jpg`, `*predictions.json`, 혼동행렬/곡선 플롯 등.
+
+3. train_val
+
+3-1. 사용명령어
+
+```bash
+python main.py --mode train_val \
+  --data data/bolt_data.yaml --weights yolov5s.pt --imgsz 640 --name {실험명}
+```
+
+--name 규칙은 train과 동일
+
+3-2. 동작
+- 학습(train)을 먼저 실행하고, 해당 실행에서 생성된 `best.pt`를 사용하여 즉시 검증을 `--task test`로 수행
+- 학습 `save_dir`: `runs/train/{실험명}/{실험명}_{YYMMDD_HHMMSS}` (KST)
+- `best.pt` 경로: `{save_dir}/weights/best.pt`
+- 검증(val)은 기본적으로 다음 옵션이 활성화됨:
+  - `--save-txt`
+  - `--save-json`
+  - `--save-conf`
+  - `--save-hybrid`
+  - `--verbose`
+- 검증 시 `--data`, `--imgsz`, `--device`는 학습에서 사용한 값을 기본 재사용
+
+3-3. 결과 저장 위치
+- 학습 결과: `runs/train/{실험명}/{실험명}_{타임스탬프}/`
+- 검증 결과: `runs/val/{실험명}/{train 실험명(타임스탬프 포함)}/`
+
+3-4. 결과물
+- 학습: `weights/best.pt`, `weights/last.pt`, `hyp.yaml`, `opt.yaml`, `results.csv`/`results.png` 등
+- 검증: 텍스트 라벨(`labels/*.txt`), COCO JSON, confidence 저장, hybrid 결과 저장, 각종 지표/로그
+
+
+[2] classmodel
+
+개요: 이미지 분류(양/불) 파이프라인. `--mode`에 따라 학습/평가/학습+평가 수행, 설정은 `config.yaml`로 관리.
+
+사전 준비
+
+```bash
+pip install -r NewCleanCode/classmodel/requirements.txt
+```
+
+작업 경로: 프로젝트 루트에서 실행하거나, `python NewCleanCode/classmodel/main.py ...`로 경로 지정.
+
+이름 규칙
+- 권장: `{부위명}_{데이터셋정보}` 예) `frontdoor_0728` (파라미터 값은 이름에 포함하지 않기 권장)
+- 학습 시 자동으로 KST 타임스탬프가 `{YYMMDD}_{HHMMSS}` 형태로 실험 폴더명에 덧붙여짐.
+  - 예) `--name frontdoor_0728` → `runs/train/frontdoor_0728/frontdoor_0728_250810_103012/`
+  - 동일 초 재시도 등 예외적 충돌 시 `_1`, `_2`가 추가될 수 있음.
+
+1) train
+
+1-1. 사용 명령어
+
+```bash
+python main.py \
+  --config config.yaml \
+  --mode train \
+  --name {실험명}
+```
+
+- `--config`: 설정 파일 경로 (필수)
+- `--mode`: `train`
+- `--name`: 실험명 (`output.experiment_name`을 덮어씀)
+- `--override`: 아래 CLI 값으로 설정 덮어쓰기
+  - `--epochs`, `--batch_size`, `--lr`
+
+1-2. 결과 저장 위치
+- `runs/train/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
+
+1-3. 결과물
+- models: `best_model.pth`, `final_model.pth`
+- plots: `training_history.png`, `learning_curves.png`
+- logs: `training_history.json`
+- 요약: `experiment_summary.txt`, `experiment_specification.txt`
+
+중복 처리
+- `output.exist_ok: false`이면 동일 폴더 존재 시 `{실험명}_1`, `{실험명}_2` … 자동 증가
+- 덮어쓰려면 `output.exist_ok: true`
+
+2) evaluate
+
+2-1. 사용 명령어
+
+```bash
+python main.py \
+  --config config.yaml \
+  --mode evaluate \
+  --model_path runs/train/{실험명}/models/best_model.pth
+```
+
+- `--model_path`를 생략하면 `runs/train/{config.output.experiment_name}/models/(best|final)_model.pth`를 탐색
+
+2-2. 결과 저장 위치
+- `runs/test/{train 실험명}/{train 실험명}_{YYMMDD}_{HHMMSS}/`  ← 모델 경로에서 학습 실험명(타임스탬프 포함)을 추출해 자동 매핑
+
+2-3. 결과물
+- results: `evaluation_results.json`, `classification_report.txt`, `prediction_images/{correct,incorrect}/`
+- plots: 혼동행렬, 클래스별 정확도 플롯
+- logs, summary/specification 텍스트
+
+3) train_evaluate
+
+3-1. 사용 명령어
+
+```bash
+python main.py \
+  --config config.yaml \
+  --mode train_evaluate \
+  --name {실험명}
+```
+
+3-2. 동작/저장
+- 학습 완료 후 같은 설정으로 즉시 평가 수행
+- 평가 모델: `runs/train/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/models/best_model.pth` (없으면 `final_model.pth`)
+- 평가 저장: `runs/test/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
+
+4) tune
+
+4-1. 사용 명령어
+
+```bash
+python main.py \
+  --config config.yaml \
+  --mode tune \
+  --name test3 \
+
+  --trials 20 \
+  --tune_pruning \
+  --tune_epochs 10 \
+  
+  --tune_final_epochs 300 \
+  --tune_es_patience 20 \
+  --tune_es_min_delta 0.01
+```
+
+4-2. 동작
+- Optuna로 하이퍼파라미터 탐색(기본: learning_rate, batch_size) → 각 트라이얼 결과를 `trial_xxx`로 저장
+- 최적 하이퍼파라미터 선정 후, 해당 값으로 최종 학습(기본 300 epochs) + 조기종료(Early Stopping) 적용
+- 최종 학습된 모델로 즉시 평가까지 자동 수행(train_evaluate)
+- 목적(metric): 검증 정확도(val_acc) 최대화
+
+4-3. 주요 옵션
+- `--trials`: 탐색할 트라이얼 수 (기본 20)
+- `--tune_pruning`: 프루닝 활성화(MedianPruner)
+- `--tune_epochs`: 튜닝 단계에서만 사용하는 에포크(빠른 탐색용)
+- `--tune_final_epochs`: 최종 학습 에포크(기본 300)
+- `--tune_es_patience`: 최종 학습 조기종료 patience(기본 20)
+- `--tune_es_min_delta`: 조기종료 개선 최소치(기본 0.0)
+- `--tune_direction`: 최적화 방향(`maximize|minimize`, 기본 maximize)
+
+4-4. 결과 저장 위치
+- 튜닝 세션 루트: `runs/tune/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
+  - 각 트라이얼: `trial_000/`, `trial_001/` … (내부에 `models/`, `logs/`, `plots/` 등)
+  - 세션 요약: `tuning_results.txt`, `tuning_results.json`
+- 최종 학습 결과: `runs/train/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
+- 최종 평가 결과: `runs/test/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
+
+5) config.yaml 핵심 키
+
+- `dataset`
+  - `train_txt`, `val_txt`, `test_txt`: 각 split의 txt 경로
+  - `classes`: 예) `{0: "good", 1: "bad"}` (내부적으로 연속 인덱스로 매핑)
+  - `augmentation`: `transform_type`(standard/center_crop/top_crop/bottom_crop/padding), resize/flip/rotation/color_jitter/normalize
+- `model`
+  - `name`: `resnet18|resnet50|efficientnet|mobilenet`
+  - `pretrained`: `true|false`
+- `training`
+  - `epochs`, `batch_size`, `learning_rate`, `num_workers`
+- `output`
+  - `experiment_name`: 실험 폴더명
+  - `exist_ok`: 덮어쓰기 허용 여부
+- `evaluation`
+  - 혼동행렬/리포트/예측 저장 플래그
+
+6) 데이터 txt 포맷
+
+- 각 줄: `{이미지_절대경로} {클래스인덱스}`
+  - 예) `/abs/path/img.jpg 0`
+- 존재하지 않는 경로는 실행 시 경고 및 집계 출력
+- 클래스 인덱스는 `config.dataset.classes` 키를 연속 인덱스로 매핑하여 사용
+
+7) 유틸
+
+- 데이터셋 점검
+```bash
+python -m NewCleanCode.classmodel.utils.dataset \
+  --config NewCleanCode/classmodel/config.yaml --validate
+```
+
+- 설정 템플릿 생성
+```bash
+python -m NewCleanCode.classmodel.utils.config \
+  --template NewCleanCode/classmodel/config_template.yaml
+```
+
+비고
+- 자동 타임스탬프 하위 폴더를 생성하지 않으므로, 타임스탬프가 필요한 경우 `--name {실험명}_{YYMMDD}_{KST}` 형태로 직접 지정하여 사용 권장.

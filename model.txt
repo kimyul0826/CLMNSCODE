@@ -1,0 +1,232 @@
+datasets/
+├── 0616/
+│   ├── frontdoor/
+│   │   ├── good/
+│   │   │   ├── crop_high/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_high_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── bad/
+│   │   │   ├── crop_high/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_high_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── Y/
+│   │   └── info.xlsx
+│   ├── backdoor
+│   │   ├── good/
+│   │   │   ├── crop_high/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_high_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── bad/
+│   │   │   ├── crop_high/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_high_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_mid_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── crop_low_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   ├── 1/ (bad_NoSealing)
+│   │   │   │   ├── 2/ (bad_SealingDiffers)
+│   │   │   │   └── 3/ (bad_TapeSealing)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── Y/
+│   │   └── info.xlsx
+│   ├── trunklid
+│   │   ├── good/
+│   │   │   ├── crop_bolt/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── crop_bolt_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── bad/
+│   │   │   ├── crop_bolt/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── crop_bolt_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── Y/
+│   │   └── info.xlsx
+│   ├── hood
+│   │   ├── good/
+│   │   │   ├── crop_bolt/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── crop_bolt_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── bad/
+│   │   │   ├── crop_bolt/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── crop_bolt_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── Y/
+│   │   └── info.xlsx
+│   └── frontfender
+│   │   ├── good/
+│   │   │   ├── crop_bolt/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── crop_bolt_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── bad/
+│   │   │   ├── crop_bolt/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── crop_bolt_aug/
+│   │   │   │   ├── 0/ (good)
+│   │   │   │   └── 1/ (bad)
+│   │   │   ├── images/
+│   │   │   └── labels/
+│   │   ├── Y/
+│   │   └── info.xlsx
+├── 0721/
+│   ├── frontdoor
+│   ├── backdoor
+│   ├── trunklid
+│   ├── hood
+│   └── frontfender
+├── aug.py
+└── split.py
+
+
+파일명 규칙
+
+{양불량}_{차량 뒤 네자리}_{임의 라벨링 여부}_{부위 인덱스}_{고유 문자열}
+
+ex) bad_0251_1_7_53b06b08-b2cc-4415-9e72-7e390db9d59d.jpg
+
+crop 이미지 규칙
+
+{양불량}_{차량 뒤 네자리}_{임의 라벨링 여부}_{부위 인덱스}_{고유 문자열}_{라벨인덱스}_{인덱스}
+
+ex) bad_0251_1_7_53b06b08-b2cc-4415-9e72-7e390db9d59d_0_1.jpg -> 이미지 내에서 yolo 인덱스 0번의 1번째 crop 이미지
+bad_0251_1_7_53b06b08-b2cc-4415-9e72-7e390db9d59d_1_0.jpg -> 이미지 내에서 yolo 인덱스 1번의 0번째 crop 이미지
+
+augmentation 이미지 경우
+
+{양불량}_{차량 뒤 네자리}_{임의 라벨링 여부}_{부위 인덱스}_{고유 문자열}_{라벨인덱스}_{인덱스}_{aug방식}
+
+ex) bad_0251_1_7_53b06b08-b2cc-4415-9e72-7e390db9d59d_0_2_brightness.jpg -> 이미지 내의 yolo 인덱스 0번의 2번째 crop 이미지를 밝기 강화
+bad_0251_1_7_53b06b08-b2cc-4415-9e72-7e390db9d59d_1_0_noise.jpg -> 이미지 내에서 yolo 인덱스 1번의 0번째 crop 이미지에 noise

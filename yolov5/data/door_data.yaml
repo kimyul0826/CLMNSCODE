@@ -1,0 +1,13 @@
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+path: ../../datasets/TXT # dataset root dir
+train: train_door.txt
+val: val_door.txt 
+test: test_door.txt
+
+num_classes: 3
+
+# Classes
+names:
+  0: high
+  1: mid
+  2: low

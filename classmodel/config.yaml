@@ -1,0 +1,56 @@
+# Dataset Configuration
+dataset:
+  # Dataset paths
+  train_txt: "../../datasets/TXT/t.txt"
+  val_txt: "../../datasets/TXT/v.txt"
+  test_txt: "../../datasets/TXT/te.txt"
+
+  # Class information
+  classes:
+    0: "good"      # Class 0: Good/Normal samples
+    1: "bad"       # Class 1: Bad/Defective samples
+    # Add more classes if needed:
+    # 2: "unknown"
+    # 3: "other"
+
+  # Number of classes (automatically calculated from classes dict)
+  num_classes: 2
+
+  # Transform configuration (per split)
+  transforms:
+    train: "standard"   # standard | center | top | bottom | padding
+    val: "standard"     # standard | center | top | bottom | padding
+    test: "standard"    # standard | center | top | bottom | padding
+
+  # Common image size (H, W)
+  resize: [224, 224]
+
+  # Normalization (applied to all splits). Remove or adjust if needed.
+  normalize:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+
+# Model Configuration
+model:
+  name: "resnet18"  # Options: resnet18, resnet50, efficientnet, mobilenet
+  pretrained: true
+
+# Training Configuration
+training:
+  epochs: 1
+  batch_size: 32
+  learning_rate: 0.001
+  num_workers: 4
+
+# Output Configuration
+output:
+  experiment_name: "exp"  # Name for the experiment (will create runs/my_experiment/)
+  exist_ok: false                   # Whether to overwrite existing experiment directory
+  save_best_model: true
+  save_training_history: true
+
+# Evaluation Configuration
+evaluation:
+  save_confusion_matrix: true
+  save_classification_report: true
+  save_predictions: true 

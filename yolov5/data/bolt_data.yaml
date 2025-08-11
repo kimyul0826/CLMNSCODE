@@ -1,0 +1,17 @@
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+path: ../../datasets/TXT # dataset root dir
+train: train_bolt.txt
+val: val_bolt.txt 
+test: test_bolt.txt
+
+num_classes: 7
+
+# Classes
+names:
+  0: bolt # 볼트
+  1: frame_1 # 트렁크리드 승용차 프레임
+  2: frame_2 # 트렁크리드 SUV 프레임
+  3: frame_3 # 후드 프레임
+  4: frame_4 # 프론트펜더 긴 프레임
+  5: frame_5 # 프론트펜더 중간 프레임
+  6: frame_6 # 프론트펜더 짧은 프레임

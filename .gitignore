@@ -1,0 +1,86 @@
+# ==============================
+# NewCleanCode 프로젝트 .gitignore
+# ==============================
+
+# OS / 시스템 파일
+.DS_Store
+__MACOSX/
+._*
+
+# 파이썬 기본 아티팩트
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# 빌드/배포 산출물
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
+*.spec
+
+# 가상환경
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# 노트북 체크포인트
+.ipynb_checkpoints/
+
+# IDE/에디터 설정
+.vscode/
+.idea/
+*.code-workspace
+.history/
+*.swp
+*.swo
+
+# 로그/캐시/테스트
+*.log
+log/
+logs/
+nohup.out
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pyre/
+.pytype/
+
+# 프로젝트 산출물 디렉터리 (학습 결과 등)
+classmodel/runs/
+yolov5/runs/
+ray_results/
+wandb/
+
+# 대용량 모델/가중치/체크포인트 파일
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.tflite
+*.engine
+*.mlmodel
+*.h5
+*.joblib
+*.pkl
+
+# 임시 파일/폴더
+tmp/
+temp/
+*.tmp
+
+# YOLOv5 캐시
+yolov5/*.cache
+yolov5/**/*.cache
+
