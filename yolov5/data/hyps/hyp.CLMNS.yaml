@@ -36,3 +36,5 @@ hsv_v: 0.4
 mosaic: 0.0
 mixup: 0.0
 copy_paste: 0.8
+
+cls_weights: [1.0, 1.0, 1.0]
