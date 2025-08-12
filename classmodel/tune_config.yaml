@@ -1,0 +1,38 @@
+# Optuna Hyperparameter Tuning Configuration
+# This file defines the search space for hyperparameter optimization
+
+hyperparameters:
+  # Learning rate search space
+  learning_rate:
+    type: loguniform  # loguniform, uniform
+    low: 1e-5         # minimum value
+    high: 1e-2        # maximum value
+  
+  # Batch size search space
+  batch_size:
+    type: categorical  # categorical, int
+    choices: [16, 32, 64, 128]  # possible values
+  
+  # Epochs search space
+  epochs:
+    type: categorical  # categorical, int
+    choices: [30, 50, 100]  # possible values
+  
+  # Weight decay search space (optional)
+  weight_decay:
+    type: loguniform  # loguniform, uniform
+    low: 1e-6         # minimum value
+    high: 1e-3        # maximum value
+  
+  # Dropout rate search space (optional)
+  dropout:
+    type: uniform     # uniform
+    low: 0.1          # minimum value
+    high: 0.5         # maximum value
+
+# Tuning settings (optional, can be overridden by command line)
+tuning:
+  trials: 50          # number of trials
+  direction: maximize # maximize, minimize
+  pruning: true       # enable pruning
+  final_epochs: 300   # epochs for final training with best params 
