@@ -88,6 +88,11 @@ class CustomDataset(Dataset):
                 self.samples.append((image_path, label))
             else:
                 print(f"Warning: Unknown class index '{class_index}' for image {image_path}")
+
+        # Expose original image paths aligned with dataset order for downstream utilities
+        # This allows evaluation utilities to retrieve and save the actual source images
+        # corresponding to predictions without relying on placeholders.
+        self.image_paths = [image_path for image_path, _ in self.samples]
         
         print(f"Loaded {len(self.samples)} samples for {split} split")
         print(f"Classes: {self.classes}")

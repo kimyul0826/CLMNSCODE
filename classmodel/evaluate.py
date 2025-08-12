@@ -86,10 +86,10 @@ def save_prediction_images(test_loader, all_predictions, all_targets, class_name
         true_class = class_names[true]
         pred_class = class_names[pred]
         is_correct = pred == true
-        
-        # Text content
-        text = f"{true_class} / {pred_class}"
-        
+
+        # Text content (no background box)
+        text = f"Actual : {true_class} , Predict : {pred_class}"
+
         # Text color based on correctness
         if is_correct:
             text_color = (0, 255, 0)  # Green for correct
@@ -99,17 +99,8 @@ def save_prediction_images(test_loader, all_predictions, all_targets, class_name
             text_color = (255, 0, 0)  # Red for incorrect
             save_dir = incorrect_dir
             incorrect_count += 1
-        
-        # Add background rectangle for text
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        
-        # Draw background rectangle
-        draw.rectangle([0, 0, text_width + 10, text_height + 10], 
-                      fill=(0, 0, 0, 128))
-        
-        # Draw text
+
+        # Draw text directly without background
         draw.text((5, 5), text, fill=text_color, font=font)
         
         # Save image

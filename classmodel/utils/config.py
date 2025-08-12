@@ -253,12 +253,13 @@ def create_test_experiment_dir(experiment_name: str, exist_ok: bool = False, fix
         experiment_dir = base_dir / timestamped_name
 
     if not exist_ok:
-        counter = 1
         original_path = experiment_dir
+        # For fixed_subdir (evaluate on the same train run), start numbering from _2
+        counter = 2 if fixed_subdir is not None else 1
         while experiment_dir.exists():
             experiment_dir = base_dir / f"{original_path.name}_{counter}"
             counter += 1
-            if counter > 10:
+            if counter > 50:
                 break
 
     experiment_dir.mkdir(parents=True, exist_ok=True)
