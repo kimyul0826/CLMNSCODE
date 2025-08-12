@@ -170,6 +170,94 @@ if platform.system() == "Windows":
         setattr(LOGGER, fn.__name__, lambda x: fn(emojis(x)))  # emoji safe logging
 
 
+# Console/file logging helpers -------------------------------------------------------------------------------------------
+_ORIGINAL_STDOUT = sys.stdout
+_ORIGINAL_STDERR = sys.stderr
+_LOG_FILE_STREAM = None  # keep file handle alive for tee
+
+
+class _Tee:
+    """Simple tee that writes to two streams (e.g., console and file)."""
+
+    def __init__(self, stream_a, stream_b):
+        self.stream_a = stream_a
+        self.stream_b = stream_b
+
+    def write(self, data):
+        try:
+            self.stream_a.write(data)
+        except Exception:
+            pass
+        try:
+            self.stream_b.write(data)
+        except Exception:
+            pass
+
+    def flush(self):
+        for s in (self.stream_a, self.stream_b):
+            try:
+                s.flush()
+            except Exception:
+                pass
+
+    def isatty(self):
+        # Preserve TTY behavior for tqdm as much as possible
+        try:
+            return bool(self.stream_a.isatty())
+        except Exception:
+            return False
+
+
+def add_file_logging(save_dir: Path, log_filename: str = "console.log", capture_stdout: bool = True):
+    """
+    Add a file handler to global LOGGER and optionally tee stdout/stderr so that all console output is saved
+    into save_dir/log_filename. Safe to call multiple times; duplicates are avoided.
+
+    Args:
+        save_dir (Path): Directory to store the log file. Will be created if missing.
+        log_filename (str): Log file name. Defaults to 'console.log'.
+        capture_stdout (bool): If True, tee sys.stdout and sys.stderr to the log file.
+    """
+    global _LOG_FILE_STREAM
+
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    log_path = save_dir / log_filename
+
+    # Avoid adding duplicate file handlers pointing to the same file
+    for h in LOGGER.handlers:
+        try:
+            if isinstance(h, logging.FileHandler) and Path(h.baseFilename) == log_path:
+                break
+        except Exception:
+            continue
+    else:
+        formatter = None
+        if LOGGER.handlers:
+            try:
+                formatter = LOGGER.handlers[0].formatter
+            except Exception:
+                formatter = None
+        file_handler = logging.FileHandler(log_path)
+        file_handler.setLevel(LOGGER.level)
+        file_handler.setFormatter(formatter or logging.Formatter("%(message)s"))
+        LOGGER.addHandler(file_handler)
+
+    if capture_stdout:
+        # Open once and keep alive; retarget if pointing to a different file
+        if _LOG_FILE_STREAM is None or _LOG_FILE_STREAM.closed or getattr(_LOG_FILE_STREAM, "name", "") != str(log_path):
+            try:
+                if _LOG_FILE_STREAM and not _LOG_FILE_STREAM.closed:
+                    _LOG_FILE_STREAM.close()
+            except Exception:
+                pass
+            _LOG_FILE_STREAM = open(log_path, mode="a", encoding="utf-8", buffering=1)
+        sys.stdout = _Tee(_ORIGINAL_STDOUT, _LOG_FILE_STREAM)
+        sys.stderr = _Tee(_ORIGINAL_STDERR, _LOG_FILE_STREAM)
+
+    LOGGER.info(colorstr("green", "bold", f"Console log will be saved to {log_path}"))
+
+
 def user_config_dir(dir="Ultralytics", env_var="YOLOV5_CONFIG_DIR"):
     """Returns user configuration directory path, preferring environment variable `YOLOV5_CONFIG_DIR` if set, else OS-
     specific.

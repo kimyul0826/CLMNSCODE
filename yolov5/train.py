@@ -70,6 +70,7 @@ from utils.general import (
     colorstr,
     get_latest_run,
     increment_path,
+    add_file_logging,
     init_seeds,
     intersect_dicts,
     labels_to_class_weights,
@@ -675,6 +676,13 @@ def main(opt, callbacks=Callbacks()):
         timestamp = now.strftime("%y%m%d_%H%M%S")
         base_dir = Path(opt.project) / opt.name
         opt.save_dir = str(base_dir / f"{opt.name}_{timestamp}")
+
+        # File logging: save full console logs to save_dir/train.log
+        try:
+            if RANK in {-1, 0}:
+                add_file_logging(Path(opt.save_dir), log_filename="train.log", capture_stdout=True)
+        except Exception:
+            pass
 
     # DDP mode
     device = select_device(opt.device, batch_size=opt.batch_size)

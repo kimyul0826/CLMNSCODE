@@ -56,6 +56,7 @@ from utils.general import (
     scale_boxes,
     xywh2xyxy,
     xyxy2xywh,
+    add_file_logging,
 )
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
 from utils.plots import output_to_target, plot_images, plot_val_study
@@ -324,6 +325,12 @@ def run(
             )
 
         (save_dir / "labels" if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+
+        # File logging: save full console logs to save_dir/val.log
+        try:
+            add_file_logging(Path(save_dir), log_filename="val.log", capture_stdout=True)
+        except Exception:
+            pass
 
         # Load model
         model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)

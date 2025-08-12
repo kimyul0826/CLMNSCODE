@@ -62,6 +62,7 @@ from utils.general import (
     scale_boxes,
     strip_optimizer,
     xyxy2xywh,
+    add_file_logging,
 )
 from utils.torch_utils import select_device, smart_inference_mode
 
@@ -163,6 +164,12 @@ def run(
     if save_crop:
         (save_dir / "crops").mkdir(parents=True, exist_ok=True)  # make crops directory
     
+    # File logging: save full console logs to save_dir/detect.log
+    try:
+        add_file_logging(Path(save_dir), log_filename="detect.log", capture_stdout=True)
+    except Exception:
+        pass
+
     # Create detected_images directory for saving all detected images
     detected_images_dir = save_dir / "detected_images"
     detected_images_dir.mkdir(parents=True, exist_ok=True)
