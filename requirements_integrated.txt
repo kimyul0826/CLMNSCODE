@@ -2,7 +2,7 @@
 # YOLO + Classification Pipeline dependencies
 
 # Core dependencies
-torch>=1.9.0
+torch>=2.7.0
 torchvision>=0.10.0
 numpy>=1.21.0
 opencv-python>=4.5.0
@@ -11,7 +11,6 @@ PyYAML>=5.4.0
 
 # YOLO dependencies
 ultralytics>=8.0.0
-PyTorch>=1.9.0
 
 # Image processing
 matplotlib>=3.5.0
