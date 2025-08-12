@@ -1,0 +1,26 @@
+source: /home/work/datasets/images/bolt
+parts: bolt
+
+yolo:
+  model: best_bolt.pt
+  imgsz: 640
+  conf_thres: 0.5
+  device: cuda
+
+  save_txt: True
+  save_crop: True
+  save_txt: True
+  save_format: 0
+  save_csv: False
+  save_conf: False
+
+resnet:
+  model: ../classmodel/pth/bolt/model.pth
+
+  # if parts is door
+  # high_model: ../classmodel/pth/door/model.pth
+  # mid_model: ../classmodel/pth/door/model.pth
+  # low_model: ../classmodel/pth/door/model.pth
+
+  config: ../classmodel/config.yaml
+  batch_size: 32
