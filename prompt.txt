@@ -321,23 +321,34 @@ python main.py \
 
 4-1. 사용 명령어
 
+기본 사용 (설정 파일 없이)
 ```bash
 python main.py \
   --config config.yaml \
   --mode tune \
   --name test3 \
-
   --trials 20 \
   --tune_pruning \
   --tune_epochs 10 \
-  
   --tune_final_epochs 300 \
   --tune_es_patience 20 \
   --tune_es_min_delta 0.01
 ```
 
+커스텀 하이퍼파라미터 범위 사용
+```bash
+python main.py \
+  --config config.yaml \
+  --mode tune \
+  --tune_config tune_config.yaml \
+  --name test3 \
+  --trials 50 \
+  --tune_pruning \
+  --tune_direction maximize
+```
+
 4-2. 동작
-- Optuna로 하이퍼파라미터 탐색(기본: learning_rate, batch_size) → 각 트라이얼 결과를 `trial_xxx`로 저장
+- Optuna로 하이퍼파라미터 탐색 → 각 트라이얼 결과를 `trial_xxx`로 저장
 - 최적 하이퍼파라미터 선정 후, 해당 값으로 최종 학습(기본 300 epochs) + 조기종료(Early Stopping) 적용
 - 최종 학습된 모델로 즉시 평가까지 자동 수행(train_evaluate)
 - 목적(metric): 검증 정확도(val_acc) 최대화
@@ -350,13 +361,101 @@ python main.py \
 - `--tune_es_patience`: 최종 학습 조기종료 patience(기본 20)
 - `--tune_es_min_delta`: 조기종료 개선 최소치(기본 0.0)
 - `--tune_direction`: 최적화 방향(`maximize|minimize`, 기본 maximize)
+- `--tune_config`: 하이퍼파라미터 범위 설정 파일 경로 (선택사항)
 
-4-4. 결과 저장 위치
+4-4. 하이퍼파라미터 설정 파일 (tune_config.yaml)
+
+기본 하이퍼파라미터 범위 (설정 파일 없이 사용 시):
+- Learning rate: 1e-5 to 1e-2 (loguniform)
+- Batch size: [8, 16, 32, 64] (categorical)
+- Epochs: [50, 100, 150, 200] (categorical)
+
+커스텀 설정 파일 예시:
+```yaml
+hyperparameters:
+  # Learning rate search space
+  learning_rate:
+    type: loguniform  # loguniform, uniform
+    low: 1e-5         # minimum value
+    high: 1e-2        # maximum value
+  
+  # Batch size search space
+  batch_size:
+    type: categorical  # categorical, int
+    choices: [8, 16, 32, 64, 128]  # possible values
+  
+  # Epochs search space
+  epochs:
+    type: categorical  # categorical, int
+    choices: [50, 100, 150, 200, 300]  # possible values
+  
+  # Weight decay search space (optional)
+  weight_decay:
+    type: loguniform  # loguniform, uniform
+    low: 1e-6         # minimum value
+    high: 1e-3        # maximum value
+  
+  # Dropout rate search space (optional)
+  dropout:
+    type: uniform     # uniform
+    low: 0.1          # minimum value
+    high: 0.5         # maximum value
+
+# Tuning settings (optional, can be overridden by command line)
+tuning:
+  trials: 50          # number of trials
+  direction: maximize # maximize, minimize
+  pruning: true       # enable pruning
+  final_epochs: 300   # epochs for final training with best params
+```
+
+지원하는 하이퍼파라미터 타입:
+- **loguniform**: 학습률, weight decay 등 (로그 스케일)
+- **uniform**: dropout 등 (선형 스케일)
+- **categorical**: 배치 크기, 에포크 등 (이산값)
+
+4-5. 결과 저장 위치
 - 튜닝 세션 루트: `runs/tune/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
   - 각 트라이얼: `trial_000/`, `trial_001/` … (내부에 `models/`, `logs/`, `plots/` 등)
   - 세션 요약: `tuning_results.txt`, `tuning_results.json`
 - 최종 학습 결과: `runs/train/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
 - 최종 평가 결과: `runs/test/{실험명}/{실험명}_{YYMMDD}_{HHMMSS}/`
+
+4-6. 사용 예시
+
+넓은 검색 공간:
+```yaml
+hyperparameters:
+  learning_rate:
+    type: loguniform
+    low: 1e-6
+    high: 1e-1
+  
+  batch_size:
+    type: categorical
+    choices: [4, 8, 16, 32, 64, 128]
+  
+  epochs:
+    type: categorical
+    choices: [25, 50, 100, 200, 400]
+```
+
+집중된 검색 공간:
+```yaml
+hyperparameters:
+  learning_rate:
+    type: loguniform
+    low: 1e-4
+    high: 1e-2
+  
+  batch_size:
+    type: categorical
+    choices: [16, 32, 64]
+  
+  epochs:
+    type: categorical
+    choices: [100, 150, 200]
+```
 
 5) config.yaml 핵심 키
 

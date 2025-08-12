@@ -80,6 +80,8 @@ def main():
                        help='Early stopping patience used in final train_evaluate')
     parser.add_argument('--tune_es_min_delta', type=float, default=0.0,
                        help='Minimum improvement to reset patience in early stopping')
+    parser.add_argument('--tune_config', type=str, default=None,
+                       help='Path to tuning configuration file (yaml) for hyperparameter ranges')
 
     
     args = parser.parse_args()
@@ -236,16 +238,114 @@ def main():
             print("❌ Optuna is not installed. Install it with: pip install optuna")
             return
 
+        # Load tuning configuration if provided
+        tune_config = None
+        if args.tune_config:
+            print(f"Loading tuning configuration from {args.tune_config}")
+            # Load tune_config without validation (it's a special format)
+            import yaml
+            try:
+                with open(args.tune_config, 'r') as f:
+                    tune_config = yaml.safe_load(f)
+                print(f"Loaded tune_config: {tune_config}")
+            except Exception as e:
+                print(f"Error loading tuning configuration: {e}")
+                print("Using default hyperparameter ranges for tuning")
+                tune_config = None
+        else:
+            print("Using default hyperparameter ranges for tuning")
+            tune_config = None
+            
+        # Use default tuning configuration if none provided or failed to load
+        if tune_config is None:
+            tune_config = {
+                'hyperparameters': {
+                    'learning_rate': {
+                        'type': 'loguniform',
+                        'low': 1e-5,
+                        'high': 1e-2
+                    },
+                    'batch_size': {
+                        'type': 'categorical',
+                        'choices': [8, 16, 32, 64]
+                    },
+                    'epochs': {
+                        'type': 'categorical',
+                        'choices': [50, 100, 150, 200]
+                    }
+                }
+            }
+
         base_name = config['output']['experiment_name']
         print(f"\n🧪 Starting Optuna tuning session: {experiment_dir}")
 
         # Define objective
         def objective(trial):
-            # Sample hyperparameters
-            sampled_lr = trial.suggest_loguniform('learning_rate', 1e-5, 1e-2)
-            sampled_batch = trial.suggest_categorical('batch_size', [8, 16, 32, 64])
-            # Optionally tune epochs for quicker feedback (or use provided tune_epochs)
-            use_epochs = args.tune_epochs if args.tune_epochs is not None else training_info['epochs']
+            # Sample hyperparameters from tune_config
+            sampled_params = {}
+            
+            for param_name, param_config in tune_config.get('hyperparameters', {}).items():
+                param_type = param_config.get('type', 'categorical')
+                
+                if param_name == 'learning_rate':
+                    low_val = float(param_config['low'])
+                    high_val = float(param_config['high'])
+                    print(f"Learning rate range: {low_val} to {high_val}")
+                    
+                    if param_type == 'loguniform':
+                        sampled_params['learning_rate'] = trial.suggest_float(
+                            'learning_rate', 
+                            low_val, 
+                            high_val,
+                            log=True
+                        )
+                    elif param_type == 'uniform':
+                        sampled_params['learning_rate'] = trial.suggest_float(
+                            'learning_rate', 
+                            low_val, 
+                            high_val
+                        )
+                
+                elif param_name == 'batch_size':
+                    sampled_params['batch_size'] = trial.suggest_categorical(
+                        'batch_size', 
+                        param_config['choices']
+                    )
+                
+                elif param_name == 'epochs':
+                    sampled_params['epochs'] = trial.suggest_categorical(
+                        'epochs', 
+                        param_config['choices']
+                    )
+                
+                # Add more hyperparameters as needed
+                elif param_name == 'weight_decay':
+                    low_val = float(param_config['low'])
+                    high_val = float(param_config['high'])
+                    
+                    if param_type == 'loguniform':
+                        sampled_params['weight_decay'] = trial.suggest_float(
+                            'weight_decay', 
+                            low_val, 
+                            high_val,
+                            log=True
+                        )
+                
+                elif param_name == 'dropout':
+                    low_val = float(param_config['low'])
+                    high_val = float(param_config['high'])
+                    
+                    if param_type == 'uniform':
+                        sampled_params['dropout'] = trial.suggest_float(
+                            'dropout', 
+                            low_val, 
+                            high_val
+                        )
+            
+            # Use sampled parameters or defaults from config
+            sampled_lr = sampled_params.get('learning_rate', training_info['learning_rate'])
+            sampled_batch = sampled_params.get('batch_size', training_info['batch_size'])
+            sampled_epochs = sampled_params.get('epochs', args.tune_epochs if args.tune_epochs is not None else training_info['epochs'])
 
             # Create per-trial output dir
             trial_dir = experiment_dir / f"trial_{trial.number:03d}"
@@ -256,6 +356,12 @@ def main():
             trial_config['training'] = dict(config['training'])
             trial_config['training']['learning_rate'] = sampled_lr
             trial_config['training']['batch_size'] = sampled_batch
+            
+            # Add other sampled parameters to config if they exist
+            if 'weight_decay' in sampled_params:
+                trial_config['training']['weight_decay'] = sampled_params['weight_decay']
+            if 'dropout' in sampled_params:
+                trial_config['model']['dropout'] = sampled_params['dropout']
 
             # Build model per trial
             model = get_model(model_info['name'], dataset_info['num_classes'], model_info['pretrained'])
@@ -265,7 +371,7 @@ def main():
                 _ = train_model(
                     model=model,
                     config=trial_config,
-                    epochs=use_epochs,
+                    epochs=sampled_epochs,
                     batch_size=sampled_batch,
                     learning_rate=sampled_lr,
                     output_dir=str(trial_dir),
