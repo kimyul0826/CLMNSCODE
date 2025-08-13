@@ -14,29 +14,32 @@ import numpy as np
 
 # Add project submodules to path
 CURRENT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = CURRENT_DIR.parent  # .../CLMNSCODE
+PROJECT_ROOT = CURRENT_DIR.parent  # .../NewCleanCode
 YOLOV5_DIR = PROJECT_ROOT / "yolov5"
 CLASSMODEL_DIR = PROJECT_ROOT / "classmodel"
+# Ensure paths for both styles of imports:
+# - fully-qualified imports (yolov5.*, classmodel.*) via PROJECT_ROOT
+# - YOLOv5's legacy absolute imports (from utils import ...) via YOLOV5_DIR
 if str(YOLOV5_DIR) not in sys.path:
     sys.path.insert(0, str(YOLOV5_DIR))
-if str(CLASSMODEL_DIR) not in sys.path:
-    sys.path.insert(0, str(CLASSMODEL_DIR))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-# YOLOv5 imports
-from models.common import DetectMultiBackend  # type: ignore
-from utils.dataloaders import LoadStreams  # type: ignore
-from utils.general import (  # type: ignore
+# YOLOv5 imports (fully-qualified to avoid name collisions with classmodel.utils)
+from yolov5.models.common import DetectMultiBackend  # type: ignore
+from yolov5.utils.dataloaders import LoadStreams  # type: ignore
+from yolov5.utils.general import (  # type: ignore
     check_img_size,
     non_max_suppression,
     scale_boxes,
     xyxy2xywh,
     cv2,
 )
-from utils.torch_utils import select_device, smart_inference_mode  # type: ignore
-from ultralytics.utils.plotting import Annotator, colors, save_one_box  # type: ignore
+from yolov5.utils.torch_utils import select_device, smart_inference_mode  # type: ignore
+from yolov5.utils.plots import Annotator, colors, save_one_box  # type: ignore
 
-# ClassModel imports
-from utils.transforms import build_transform_for_split  # type: ignore
+# ClassModel imports (fully-qualified)
+from classmodel.utils.transforms import build_transform_for_split  # type: ignore
 
 
 KST = time.tzname[0]  # Not used for formatting, kept for completeness
@@ -126,9 +129,9 @@ def yolo_label_line(cls_id: int, xyxy: np.ndarray, img_shape: Tuple[int, int], s
 
 def load_classification_model(model_path: Path, base_config_path: Path) -> Tuple[torch.nn.Module, Dict[str, Any]]:
     """Load a classification model checkpoint and return model + config dict."""
-    from models.resnet import ResNet18, ResNet50  # type: ignore
-    from models.efficientnet import EfficientNet  # type: ignore
-    from models.mobilenet import MobileNet  # type: ignore
+    from classmodel.models.resnet import ResNet18, ResNet50  # type: ignore
+    from classmodel.models.efficientnet import EfficientNet  # type: ignore
+    from classmodel.models.mobilenet import MobileNet  # type: ignore
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(str(model_path), map_location=device)
@@ -137,7 +140,10 @@ def load_classification_model(model_path: Path, base_config_path: Path) -> Tuple
     cfg = load_yaml(base_config_path)
     model_name = cfg.get("model", {}).get("name", "resnet18")
     pretrained = cfg.get("model", {}).get("pretrained", True)
-    classes = checkpoint.get("classes", ["good", "bad"])  # default order
+    if isinstance(checkpoint, dict) and "classes" in checkpoint:
+        classes = checkpoint["classes"]
+    else:
+        classes = ["good", "bad"]  # default order
     num_classes = len(classes)
 
     if model_name == "resnet18":
@@ -151,7 +157,30 @@ def load_classification_model(model_path: Path, base_config_path: Path) -> Tuple
     else:
         raise ValueError(f"Unsupported model in config: {model_name}")
 
-    model.load_state_dict(checkpoint["model_state_dict"])  # type: ignore
+    # Resolve state_dict across various save formats
+    state_dict = None
+    if isinstance(checkpoint, dict):
+        if "model_state_dict" in checkpoint and isinstance(checkpoint["model_state_dict"], dict):
+            state_dict = checkpoint["model_state_dict"]
+        elif "state_dict" in checkpoint and isinstance(checkpoint["state_dict"], dict):
+            state_dict = checkpoint["state_dict"]
+        elif "model" in checkpoint and isinstance(checkpoint["model"], dict):
+            state_dict = checkpoint["model"]
+        else:
+            # Heuristic: dict of parameter tensors
+            try:
+                if all(isinstance(k, str) for k in checkpoint.keys()):
+                    sample_val = next(iter(checkpoint.values())) if len(checkpoint) else None
+                    if sample_val is None or torch.is_tensor(sample_val) or (
+                        hasattr(sample_val, "shape") and hasattr(sample_val, "dtype")
+                    ):
+                        state_dict = checkpoint  # assume pure state_dict
+            except Exception:
+                pass
+    if state_dict is None:
+        raise KeyError("Unsupported checkpoint format: could not find state_dict")
+
+    model.load_state_dict(state_dict, strict=False)  # type: ignore
     model.to(device)
     model.eval()
     # Attach classes to cfg for reference
@@ -222,14 +251,41 @@ def run_live_pipeline(config_path: Optional[str] = None):
     name_opt = cfg.get("name", None)
 
     yolo_cfg: Dict[str, Any] = cfg.get("yolo", {})
-    yolo_weights = str(yolo_cfg.get("model", str(YOLOV5_DIR / "yolov5s.pt")))
+    yolo_weights = str(yolo_cfg.get("model", str(PROJECT_ROOT / "yolov5" / "yolov5s.pt")))
     imgsz = int(yolo_cfg.get("imgsz", 640))
     conf_thres = float(yolo_cfg.get("conf_thres", 0.25))
-    device_str = str(yolo_cfg.get("device", ""))
+    device_str = str(yolo_cfg.get("device", "")).strip()
     save_txt = bool(yolo_cfg.get("save_txt", True))
     save_crop = bool(yolo_cfg.get("save_crop", True))
     save_format = int(yolo_cfg.get("save_format", 0))  # 0: YOLO, 1: PascalVOC
     save_conf = bool(yolo_cfg.get("save_conf", False))
+    view_img = bool(yolo_cfg.get("view_img", True))
+
+    # Normalize/select device safely
+    dev_low = device_str.lower()
+    def has_mps() -> bool:
+        return bool(getattr(torch, "has_mps", False)) and torch.backends.mps.is_available()
+    if dev_low in ("", "auto"):
+        if torch.cuda.is_available():
+            device_str = "0"
+        elif has_mps():
+            device_str = "mps"
+        else:
+            device_str = "cpu"
+    elif dev_low in ("cuda", "gpu"):
+        if torch.cuda.is_available():
+            device_str = "0"
+        elif has_mps():
+            print("[INFO] CUDA not available. Falling back to MPS.")
+            device_str = "mps"
+        else:
+            print("[INFO] CUDA not available. Falling back to CPU.")
+            device_str = "cpu"
+    elif dev_low in ("mps", "metal"):
+        if not has_mps():
+            print("[INFO] MPS not available. Falling back to CPU.")
+            device_str = "cpu"
+    # else: user-specified like '0' or '0,1' remains as-is
 
     # 2) Prepare output directories
     base_runs_dir = CURRENT_DIR / "runs" / "live"
@@ -274,13 +330,14 @@ def run_live_pipeline(config_path: Optional[str] = None):
     else:  # door
         required_seconds = 3.0
     tolerance_seconds = 0.5
-    stability_tracker = StabilityTracker(required_seconds, tolerance_seconds)
 
     frame_indices = [0 for _ in range(bs)]
+    stability_trackers = [StabilityTracker(required_seconds, tolerance_seconds) for _ in range(bs)]
+    has_cropped_window = [False for _ in range(bs)]
 
     # Prepare class model configs
     resnet_cfg: Dict[str, Any] = cfg.get("resnet", {})
-    base_classmodel_config_path = Path(resnet_cfg.get("config", CLASSMODEL_DIR / "config.yaml"))
+    base_classmodel_config_path = Path(resnet_cfg.get("config", PROJECT_ROOT / "classmodel" / "config.yaml"))
 
     # Pre-load classification models (bolt single, door per-region)
     bolt_model: Optional[torch.nn.Module] = None
@@ -337,6 +394,16 @@ def run_live_pipeline(config_path: Optional[str] = None):
             print("[WARN] Failed to load RandomForest model. RF results will be skipped.")
 
     # 4) Inference loop
+    stop_requested = False
+    window_title_base = f"Live - {parts}"
+    # Ensure any stray test window is closed (YOLOv5 check_imshow may create 'test')
+    try:
+        cv2.destroyWindow("test")
+    except Exception:
+        pass
+
+    window_created: Dict[int, bool] = {}
+
     for (paths, im, im0s, vid_cap, s) in dataset:
         now = time.time()
 
@@ -356,12 +423,13 @@ def run_live_pipeline(config_path: Optional[str] = None):
         for i, det in enumerate(pred):
             # Acquire per-stream data
             p = Path(paths[i])
-            im0 = im0s[i].copy()
+            im0 = im0s[i].copy()  # clean image for cropping (no drawings)
             frame_idx = frame_indices[i]
             frame_indices[i] += 1
 
-            # Prepare annotator
-            annotator = Annotator(im0, line_width=3, example=str(names))
+            # Prepare annotator on a separate draw image to avoid drawing into crops
+            im_draw = im0.copy()
+            annotator = Annotator(im_draw, line_width=3, example=str(names))
 
             # Rescale to original size
             if len(det):
@@ -380,32 +448,41 @@ def run_live_pipeline(config_path: Optional[str] = None):
                 label = names[cls_id]
                 annotator.box_label(xyxy_t, label, color=colors(cls_id, True))
 
-            # Write YOLO labels for this frame if requested
-            if save_txt and len(det):
-                label_path = labels_dir / f"frame_{frame_idx:06d}.txt"
-                with open(label_path, "w") as lf:
-                    for *xyxy_t, conf_t, cls_t in reversed(det):
-                        cls_id = int(cls_t)
-                        xyxy_np = torch.tensor(xyxy_t).view(1, 4).cpu().numpy()[0]
-                        line = yolo_label_line(cls_id, xyxy_np, im0.shape, save_conf, float(conf_t) if save_conf else None)
-                        lf.write(line + "\n")
+            # Defer label writing until we decide to capture the final stable frame
 
             # Stability/presence condition check
             is_stable = False
             if parts == "bolt":
-                # Require classes 1..6 all present and maintained for 5s (0.5s tolerance)
-                have_all_frames = all((c in class_to_boxes and len(class_to_boxes[c]) > 0) for c in [1, 2, 3, 4, 5, 6])
-                is_stable = stability_tracker.update(have_all_frames, now)
+                # New rule: any of classes 1..6 present; capture only once when stability first achieved
+                have_any_frame = any((c in class_to_boxes and len(class_to_boxes[c]) > 0) for c in [1, 2, 3, 4, 5, 6])
+                tracker = stability_trackers[i]
+                is_stable = tracker.update(have_any_frame, now)
+                # Reset crop window if condition broke beyond tolerance
+                if not have_any_frame and tracker.window_start_time is None:
+                    has_cropped_window[i] = False
             else:
                 # Door: exactly one each for classes 0,1,2
                 counts = [len(class_to_boxes.get(c, [])) for c in [0, 1, 2]]
                 exactly_one_each = (counts == [1, 1, 1])
-                is_stable = stability_tracker.update(exactly_one_each, now)
+                tracker = stability_trackers[i]
+                is_stable = tracker.update(exactly_one_each, now)
+                if (not exactly_one_each) and tracker.window_start_time is None:
+                    has_cropped_window[i] = False
 
-            # Cropping and classification when stable
+            # Cropping and classification when stability is satisfied
             crops_saved_paths: List[Path] = []
             crops_saved_regions: List[Tuple[str, np.ndarray]] = []  # (tag, xyxy)
-            if is_stable:
+            # For bolt: capture only once per stability window (the last image at threshold)
+            should_capture = False
+            if parts == "bolt":
+                if is_stable and not has_cropped_window[i]:
+                    should_capture = True
+                    has_cropped_window[i] = True
+            else:
+                # Door behavior unchanged: capture when stable every time (can adjust similarly if needed)
+                should_capture = is_stable
+
+            if should_capture:
                 if parts == "bolt":
                     frame_boxes = []
                     for c in [1, 2, 3, 4, 5, 6]:
@@ -417,7 +494,7 @@ def run_live_pipeline(config_path: Optional[str] = None):
                     for b in bolt_boxes:
                         if any(inside(b, f) for f in frame_boxes):
                             selected_bolts.append(b)
-                    # Save crops
+                    # Save crops (only those bolts whose centers are inside any detected frame)
                     crop_count = 0
                     for b in selected_bolts:
                         x1, y1, x2, y2 = map(int, b)
@@ -452,6 +529,19 @@ def run_live_pipeline(config_path: Optional[str] = None):
                         soft_vote_probs = avg_probs
                     else:
                         print("[WARN] Bolt classification skipped (model or transform missing).")
+
+                    # Print prediction summary to terminal
+                    try:
+                        print(f"[결과] 프레임 {frame_idx}: 볼트 크롭 {len(crops_saved_paths)}개")
+                        for idx, prob in enumerate(per_crop_probs):
+                            pred_lbl = ['good','bad'][per_crop_preds[idx]] if idx < len(per_crop_preds) else 'N/A'
+                            print(f" - bolt_{idx}: good={prob[0]:.2f}, bad={prob[1]:.2f}, 예측={pred_lbl}")
+                        if hard_vote_result is not None:
+                            print(f" - 하드 투표: {['good','bad'][hard_vote_result]}")
+                        if soft_vote_result is not None and soft_vote_probs is not None:
+                            print(f" - 소프트 투표: {['good','bad'][soft_vote_result]} (probs={soft_vote_probs})")
+                    except Exception:
+                        pass
 
                     # Annotate with classification
                     for tag, box in crops_saved_regions:
@@ -541,6 +631,23 @@ def run_live_pipeline(config_path: Optional[str] = None):
                             except Exception:
                                 rf_vote = None
 
+                        # Print prediction summary to terminal (door)
+                        try:
+                            print(f"[결과] 프레임 {frame_idx}: 문 영역 분류 결과")
+                            for region in ["high", "mid", "low"]:
+                                if region in region_probs and region in region_preds:
+                                    prob = region_probs[region]
+                                    pred_lbl = ['good','bad'][region_preds[region]]
+                                    print(f" - {region}: good={prob[0]:.2f}, bad={prob[1]:.2f}, 예측={pred_lbl}")
+                            if hard_vote is not None:
+                                print(f" - 하드 투표: {['good','bad'][hard_vote]}")
+                            if soft_vote is not None and soft_probs is not None:
+                                print(f" - 소프트 투표: {['good','bad'][soft_vote]} (probs={soft_probs})")
+                            if rf_vote is not None:
+                                print(f" - 랜덤포레스트: {['good','bad'][rf_vote]}")
+                        except Exception:
+                            pass
+
                         # Annotate
                         for region, box in crops_saved_regions:
                             x1, y1, x2, y2 = map(int, box)
@@ -567,9 +674,50 @@ def run_live_pipeline(config_path: Optional[str] = None):
                                 "rf_vote": rf_vote if rf_vote is not None else "N/A",
                             }) + "\n")
 
-            # Save annotated frame image
-            annotated_path = annotated_dir / f"frame_{frame_idx:06d}.jpg"
-            cv2.imwrite(str(annotated_path), annotator.result())
+            # Prepare annotated image
+            annotated_img = annotator.result()
+            if should_capture:
+                # Write labels only for the captured final frame
+                if save_txt and len(det):
+                    label_path = labels_dir / f"frame_{frame_idx:06d}.txt"
+                    with open(label_path, "w") as lf:
+                        for *xyxy_t, conf_t, cls_t in reversed(det):
+                            cls_id = int(cls_t)
+                            xyxy_np = torch.tensor(xyxy_t).view(1, 4).cpu().numpy()[0]
+                            line = yolo_label_line(cls_id, xyxy_np, im0.shape, save_conf, float(conf_t) if save_conf else None)
+                            lf.write(line + "\n")
+                # Save only the final stable frame's annotated image, then exit
+                annotated_path = annotated_dir / f"frame_{frame_idx:06d}.jpg"
+                cv2.imwrite(str(annotated_path), annotated_img)
+                try:
+                    cv2.destroyAllWindows()
+                except Exception:
+                    pass
+                return
+            else:
+                # Show live preview without saving when not capturing
+                if view_img:
+                    window_name = f"{window_title_base} [{i}]"
+                    try:
+                        if not window_created.get(i, False):
+                            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+                            window_created[i] = True
+                    except Exception:
+                        pass
+                    try:
+                        cv2.imshow(window_name, annotated_img)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            stop_requested = True
+                    except Exception:
+                        pass
+
+        if stop_requested:
+            # Attempt to gracefully close any OpenCV windows
+            try:
+                cv2.destroyAllWindows()
+            except Exception:
+                pass
+            return
 
         # Optional: press Ctrl+C to stop; loop runs indefinitely for webcam
 

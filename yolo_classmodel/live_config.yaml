@@ -1,10 +1,10 @@
-source: /home/work/datasets/images/bolt
+source: 1
 parts: bolt
 
 yolo:
-  model: best_bolt.pt
+  model: best_bolt_frame.pt
   imgsz: 640
-  conf_thres: 0.5
+  conf_thres: 0.4
   device: cuda
 
   save_txt: True
@@ -15,12 +15,13 @@ yolo:
   save_conf: False
 
 resnet:
-  model: ../classmodel/pth/bolt/model.pth
+  model: pth/bolt/bolt_best_resnet50.pth
 
   # if parts is door
   # high_model: ../classmodel/pth/door/model.pth
   # mid_model: ../classmodel/pth/door/model.pth
   # low_model: ../classmodel/pth/door/model.pth
+  transform: "standard"
 
   config: ../classmodel/config.yaml
-  batch_size: 32
+  batch_size: 16
