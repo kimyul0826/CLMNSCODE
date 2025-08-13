@@ -273,11 +273,27 @@ def main():
                         'type': 'categorical',
                         'choices': [50, 100, 150, 200]
                     }
+                },
+                'tuning': {
+                    'early_stopping': True,
+                    'es_patience': 10,
+                    'es_min_delta': 0.001
                 }
             }
 
         base_name = config['output']['experiment_name']
         print(f"\n🧪 Starting Optuna tuning session: {experiment_dir}")
+
+        # Early stopping 설정 가져오기
+        tuning_settings = tune_config.get('tuning', {})
+        early_stopping_enabled = tuning_settings.get('early_stopping', True)
+        es_patience = tuning_settings.get('es_patience', 10)
+        es_min_delta = tuning_settings.get('es_min_delta', 0.001)
+        
+        print(f"📊 Early stopping 설정:")
+        print(f"   활성화: {early_stopping_enabled}")
+        print(f"   Patience: {es_patience} 에포크")
+        print(f"   최소 개선: {es_min_delta}")
 
         # Define objective
         def objective(trial):
@@ -341,6 +357,21 @@ def main():
                             low_val, 
                             high_val
                         )
+                
+                # Transform 타입 튜닝 추가
+                elif param_name == 'transform_type':
+                    if param_type == 'categorical':
+                        transform_choices = param_config.get('choices', [
+                            'standard',    # 기본 변환
+                            'center',      # 중앙 크롭
+                            'top',         # 상단 크롭
+                            'bottom',      # 하단 크롭
+                            'padding'      # 패딩
+                        ])
+                        sampled_params['transform_type'] = trial.suggest_categorical(
+                            'transform_type', 
+                            transform_choices
+                        )
             
             # Use sampled parameters or defaults from config
             sampled_lr = sampled_params.get('learning_rate', training_info['learning_rate'])
@@ -362,6 +393,14 @@ def main():
                 trial_config['training']['weight_decay'] = sampled_params['weight_decay']
             if 'dropout' in sampled_params:
                 trial_config['model']['dropout'] = sampled_params['dropout']
+            if 'transform_type' in sampled_params:
+                # Transform 타입을 모든 split에 적용
+                transform_type = sampled_params['transform_type']
+                if 'transforms' not in trial_config['dataset']:
+                    trial_config['dataset']['transforms'] = {}
+                trial_config['dataset']['transforms']['train'] = transform_type
+                trial_config['dataset']['transforms']['val'] = transform_type
+                trial_config['dataset']['transforms']['test'] = transform_type
 
             # Build model per trial
             model = get_model(model_info['name'], dataset_info['num_classes'], model_info['pretrained'])
@@ -377,6 +416,9 @@ def main():
                     output_dir=str(trial_dir),
                     optuna_trial=trial,
                     enable_pruning=args.tune_pruning,
+                    early_stopping=early_stopping_enabled,  # Early stopping 활성화
+                    es_patience=es_patience,       # 10 에포크 patience
+                    es_min_delta=es_min_delta,   # 최소 개선 임계값
                 )
             except Exception as e:
                 # In case of out-of-memory or other runtime errors, fail this trial gracefully
@@ -464,9 +506,9 @@ def main():
             batch_size=final_config['training']['batch_size'],
             learning_rate=final_config['training']['learning_rate'],
             output_dir=str(final_experiment_dir),
-            early_stopping=True,
-            es_patience=args.tune_es_patience,
-            es_min_delta=args.tune_es_min_delta,
+            early_stopping=early_stopping_enabled,
+            es_patience=es_patience,
+            es_min_delta=es_min_delta,
         )
 
         # Locate best model path and evaluate

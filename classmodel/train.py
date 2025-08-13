@@ -70,8 +70,18 @@ def train_model(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     
+    # 클래스별 가중치 설정
+    class_weights = None
+    if 'class_weights' in config.get('training', {}):
+        weights = config['training']['class_weights']
+        if isinstance(weights, list) and len(weights) == num_classes:
+            class_weights = torch.tensor(weights, dtype=torch.float32).to(device)
+            print(f"📊 클래스별 가중치 적용: {dict(zip(class_names, weights))}")
+        else:
+            print(f"⚠️ 클래스별 가중치 설정이 잘못되었습니다. 무시합니다.")
+    
     # Loss function and optimizer
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     
     # Learning rate scheduler
@@ -101,6 +111,7 @@ def train_model(
     print(f"   Device: {device}")
     print(f"   Batch size: {batch_size}")
     print(f"   Learning rate: {learning_rate}")
+    print(f"   Class weights: {class_weights.tolist() if class_weights is not None else 'None'}")
     print(f"   Train samples: {len(train_loader.dataset)}")
     print(f"   Val samples: {len(val_loader.dataset)}")
     print("-" * 60)
@@ -270,6 +281,7 @@ def train_model(
             f.write(f"ES Min Delta: {es_min_delta}\n")
         f.write(f"Batch Size: {batch_size}\n")
         f.write(f"Learning Rate: {learning_rate}\n")
+        f.write(f"Class Weights: {class_weights.tolist() if class_weights is not None else 'None'}\n")
         f.write(f"Best Validation Accuracy: {best_val_acc:.2f}%\n")
         f.write(f"Final Validation Accuracy: {val_acc:.2f}%\n")
         f.write(f"Transform Type: {config.get('dataset', {}).get('augmentation', {}).get('transform_type', 'standard')}\n")
@@ -308,7 +320,8 @@ def train_model(
         f.write(f"Epochs: {config['training']['epochs']}\n")
         f.write(f"Batch Size: {config['training']['batch_size']}\n")
         f.write(f"Learning Rate: {config['training']['learning_rate']}\n")
-        f.write(f"Number of Workers: {config['training']['num_workers']}\n\n")
+        f.write(f"Number of Workers: {config['training']['num_workers']}\n")
+        f.write(f"Class Weights: {config['training'].get('class_weights', 'None')}\n\n")
         
         f.write("Data Augmentation:\n")
         f.write("-" * 30 + "\n")
