@@ -1,0 +1,27 @@
+source: 1
+parts: door
+
+yolo:
+  model: modelfile/pt/best_door.pt
+  imgsz: 640
+  conf_thres: 0.4
+  device: cuda
+
+  save_txt: True
+  save_crop: True
+  save_txt: True
+  save_format: 0
+  save_csv: False
+  save_conf: False
+
+resnet:
+  high_model: modelfile/pth/door/high_best_resnet18.pth
+  mid_model: modelfile/pth/door/mid_best_resnet18.pth
+  low_model: modelfile/pth/door/low_best_resnet18.pth
+
+  high_transform: "center"
+  mid_transform: "padding"
+  low_transform: "top"
+
+  config: ../classmodel/config.yaml
+  batch_size: 16
