@@ -60,6 +60,7 @@ htmlcov/
 # 프로젝트 산출물 디렉터리 (학습 결과 등)
 classmodel/runs/
 yolov5/runs/
+yolo_classmodel/runs/
 ray_results/
 wandb/
 
