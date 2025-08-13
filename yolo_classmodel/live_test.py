@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # YOLOv5 imports (fully-qualified to avoid name collisions with classmodel.utils)
 from yolov5.models.common import DetectMultiBackend  # type: ignore
-from yolov5.utils.dataloaders import LoadStreams  # type: ignore
+from yolov5.utils.dataloaders import LoadStreams, LoadImages  # type: ignore
 from yolov5.utils.general import (  # type: ignore
     check_img_size,
     non_max_suppression,
@@ -108,11 +108,14 @@ def load_yaml(path: Path) -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def build_output_dir(base_runs_dir: Path, parts: str, name: Optional[str]) -> Path:
-    if name and str(name).strip():
-        folder_name = name.strip()
+def build_output_dir(base_runs_dir: Path, parts: str, mode: str, name: Optional[str]) -> Path:
+    if mode == "live":
+        if name and str(name).strip():
+            folder_name = name.strip()
+        else:
+            folder_name = f"live_{parts}_{get_kst_timestamp()}"
     else:
-        folder_name = f"live_{parts}_{get_kst_timestamp()}"
+        folder_name = f"test_{parts}_{get_kst_timestamp()}"
     return base_runs_dir / folder_name
 
 
@@ -240,13 +243,58 @@ def inside(xyxy_inner: np.ndarray, xyxy_outer: np.ndarray) -> bool:
     return (ox1 <= cx <= ox2) and (oy1 <= cy <= oy2)
 
 
+def _is_webcam_source(source: str) -> bool:
+    s = str(source).strip()
+    if s.isdigit():
+        return True
+    try:
+        # '0' or '1' like
+        int(s)
+        return True
+    except Exception:
+        return False
+
+
+def _parse_actual_from_name(path: Path) -> Optional[str]:
+    stem = path.stem.lower()
+    if stem.startswith("good"):
+        return "good"
+    if stem.startswith("bad"):
+        return "bad"
+    return None
+
+
+def _save_confusion_outputs(cm: np.ndarray, class_names_y: List[str], class_names_pred: List[str], out_png: Path, out_json: Path) -> None:
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(cm, cmap="Blues")
+    ax.set_xticks(range(len(class_names_pred)))
+    ax.set_xticklabels(class_names_pred, rotation=45, ha="right")
+    ax.set_yticks(range(len(class_names_y)))
+    ax.set_yticklabels(class_names_y)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, str(int(cm[i, j])), ha="center", va="center", color="black")
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    fig.tight_layout()
+    fig.savefig(out_png)
+    plt.close(fig)
+    with open(out_json, "w") as f:
+        json.dump({
+            "matrix": cm.tolist(),
+            "actual_labels": class_names_y,
+            "pred_labels": class_names_pred,
+        }, f, indent=2)
+
+
 @smart_inference_mode()
 def run_live_pipeline(config_path: Optional[str] = None):
     # 1) Load config
     config_file = Path(config_path) if config_path else CURRENT_DIR / "live_config.yaml"
     cfg = load_yaml(config_file)
 
-    source = str(cfg.get("source", "0"))  # webcam index as string for LoadStreams
+    source = str(cfg.get("source", "0"))
     parts = str(cfg.get("parts", "bolt")).strip()
     name_opt = cfg.get("name", None)
 
@@ -288,8 +336,9 @@ def run_live_pipeline(config_path: Optional[str] = None):
     # else: user-specified like '0' or '0,1' remains as-is
 
     # 2) Prepare output directories
-    base_runs_dir = CURRENT_DIR / "runs" / "live"
-    out_dir = build_output_dir(base_runs_dir, parts, name_opt)
+    is_webcam = _is_webcam_source(source)
+    base_runs_dir = CURRENT_DIR / "runs" / ("live" if is_webcam else "test")
+    out_dir = build_output_dir(base_runs_dir, parts, "live" if is_webcam else "test", name_opt)
     labels_dir = out_dir / "labels"
     crops_dir = out_dir / "crops"
     annotated_dir = out_dir / "annotated"
@@ -303,11 +352,15 @@ def run_live_pipeline(config_path: Optional[str] = None):
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size((imgsz, imgsz), s=stride)
 
-    dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=1)
-    bs = len(dataset)
-    if bs < 1:
-        print("No webcam streams available.")
-        return
+    if is_webcam:
+        dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=1)
+        bs = len(dataset)
+        if bs < 1:
+            print("No webcam streams available.")
+            return
+    else:
+        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=1)
+        bs = 1
 
     # Determine FPS (fallback to 30)
     fps = 30.0
@@ -334,6 +387,13 @@ def run_live_pipeline(config_path: Optional[str] = None):
     frame_indices = [0 for _ in range(bs)]
     stability_trackers = [StabilityTracker(required_seconds, tolerance_seconds) for _ in range(bs)]
     has_cropped_window = [False for _ in range(bs)]
+
+    # Offline accumulators
+    bolt_rows: List[Dict[str, Any]] = []
+    door_rows: List[Dict[str, Any]] = []
+    hard_pairs: List[Tuple[str, str]] = []  # (actual, pred)
+    soft_pairs: List[Tuple[str, str]] = []
+    rf_pairs: List[Tuple[str, str]] = []
 
     # Prepare class model configs
     resnet_cfg: Dict[str, Any] = cfg.get("resnet", {})
@@ -377,8 +437,8 @@ def run_live_pipeline(config_path: Optional[str] = None):
             if base_cfg_obj is not None:
                 transforms_per_region[region_key] = build_transform_from_config(base_cfg_obj, region_t)
 
-    print(f"📁 Live output directory: {out_dir}")
-    print(f"🎥 Source: {source} | parts={parts} | fps={fps:.1f} | stability={required_seconds}s tol={tolerance_seconds}s")
+    print(f"📁 Output directory: {out_dir}")
+    print(f"🎥 Source: {source} | mode={'live' if is_webcam else 'test'} | parts={parts} | fps={fps:.1f}{' (approx)' if not is_webcam else ''}")
 
     # Per-image crop indexing
     crop_index_map: Dict[str, int] = {}
@@ -404,7 +464,11 @@ def run_live_pipeline(config_path: Optional[str] = None):
 
     window_created: Dict[int, bool] = {}
 
-    for (paths, im, im0s, vid_cap, s) in dataset:
+    for data_item in dataset:
+        if is_webcam:
+            paths, im, im0s, vid_cap, s = data_item
+        else:
+            path, im, im0s, vid_cap, s = data_item
         now = time.time()
 
         # Preprocess
@@ -421,9 +485,13 @@ def run_live_pipeline(config_path: Optional[str] = None):
 
         # For each image in batch (streams)
         for i, det in enumerate(pred):
-            # Acquire per-stream data
-            p = Path(paths[i])
-            im0 = im0s[i].copy()  # clean image for cropping (no drawings)
+            # Acquire per-stream/entry data
+            if is_webcam:
+                p = Path(paths[i])
+                im0 = im0s[i].copy()
+            else:
+                p = Path(path)
+                im0 = im0s.copy()
             frame_idx = frame_indices[i]
             frame_indices[i] += 1
 
@@ -448,25 +516,23 @@ def run_live_pipeline(config_path: Optional[str] = None):
                 label = names[cls_id]
                 annotator.box_label(xyxy_t, label, color=colors(cls_id, True))
 
-            # Defer label writing until we decide to capture the final stable frame
+            # Label writing strategy: live -> captured frame only; offline -> per image
 
             # Stability/presence condition check
             is_stable = False
             if parts == "bolt":
-                # New rule: any of classes 1..6 present; capture only once when stability first achieved
                 have_any_frame = any((c in class_to_boxes and len(class_to_boxes[c]) > 0) for c in [1, 2, 3, 4, 5, 6])
                 tracker = stability_trackers[i]
-                is_stable = tracker.update(have_any_frame, now)
-                # Reset crop window if condition broke beyond tolerance
-                if not have_any_frame and tracker.window_start_time is None:
+                is_stable = tracker.update(have_any_frame, now) if is_webcam else have_any_frame
+                if is_webcam and (not have_any_frame) and tracker.window_start_time is None:
                     has_cropped_window[i] = False
             else:
                 # Door: exactly one each for classes 0,1,2
                 counts = [len(class_to_boxes.get(c, [])) for c in [0, 1, 2]]
                 exactly_one_each = (counts == [1, 1, 1])
                 tracker = stability_trackers[i]
-                is_stable = tracker.update(exactly_one_each, now)
-                if (not exactly_one_each) and tracker.window_start_time is None:
+                is_stable = tracker.update(exactly_one_each, now) if is_webcam else exactly_one_each
+                if is_webcam and (not exactly_one_each) and tracker.window_start_time is None:
                     has_cropped_window[i] = False
 
             # Cropping and classification when stability is satisfied
@@ -475,9 +541,12 @@ def run_live_pipeline(config_path: Optional[str] = None):
             # For bolt: capture only once per stability window (the last image at threshold)
             should_capture = False
             if parts == "bolt":
-                if is_stable and not has_cropped_window[i]:
-                    should_capture = True
-                    has_cropped_window[i] = True
+                if is_webcam:
+                    if is_stable and not has_cropped_window[i]:
+                        should_capture = True
+                        has_cropped_window[i] = True
+                else:
+                    should_capture = is_stable
             else:
                 # Door behavior unchanged: capture when stable every time (can adjust similarly if needed)
                 should_capture = is_stable
@@ -556,7 +625,7 @@ def run_live_pipeline(config_path: Optional[str] = None):
                             label_txt += f" good:{prob[0]:.2f} bad:{prob[1]:.2f} -> {['good','bad'][per_crop_preds[idx]]}"
                         draw_text(im0, label_txt, (x1, max(0, y1 - 5)), (0, 255, 255))
 
-                    # Save results text
+                    # Save results text (live)
                     results_path = out_dir / "results_bolt.txt"
                     with open(results_path, "a") as rf:
                         rf.write(json.dumps({
@@ -661,7 +730,7 @@ def run_live_pipeline(config_path: Optional[str] = None):
                                     (0, 255, 255),
                                 )
 
-                        # Save results
+                        # Save results (live)
                         results_path = out_dir / "results_door.txt"
                         with open(results_path, "a") as rf:
                             rf.write(json.dumps({
@@ -676,42 +745,138 @@ def run_live_pipeline(config_path: Optional[str] = None):
 
             # Prepare annotated image
             annotated_img = annotator.result()
-            if should_capture:
-                # Write labels only for the captured final frame
+            if is_webcam:
+                if should_capture:
+                    if save_txt and len(det):
+                        label_path = labels_dir / f"frame_{frame_idx:06d}.txt"
+                        with open(label_path, "w") as lf:
+                            for *xyxy_t, conf_t, cls_t in reversed(det):
+                                cls_id = int(cls_t)
+                                xyxy_np = torch.tensor(xyxy_t).view(1, 4).cpu().numpy()[0]
+                                line = yolo_label_line(cls_id, xyxy_np, im0.shape, save_conf, float(conf_t) if save_conf else None)
+                                lf.write(line + "\n")
+                    annotated_path = annotated_dir / f"frame_{frame_idx:06d}.jpg"
+                    cv2.imwrite(str(annotated_path), annotated_img)
+                    try:
+                        cv2.destroyAllWindows()
+                    except Exception:
+                        pass
+                    return
+                else:
+                    if view_img:
+                        window_name = f"{window_title_base} [{i}]"
+                        try:
+                            if not window_created.get(i, False):
+                                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+                                window_created[i] = True
+                        except Exception:
+                            pass
+                        try:
+                            cv2.imshow(window_name, annotated_img)
+                            if cv2.waitKey(1) & 0xFF == ord('q'):
+                                stop_requested = True
+                        except Exception:
+                            pass
+            else:
+                # OFFLINE: always save labels and annotated image per entry
+                stem = p.stem
                 if save_txt and len(det):
-                    label_path = labels_dir / f"frame_{frame_idx:06d}.txt"
+                    label_path = labels_dir / f"{stem}.txt"
                     with open(label_path, "w") as lf:
                         for *xyxy_t, conf_t, cls_t in reversed(det):
                             cls_id = int(cls_t)
                             xyxy_np = torch.tensor(xyxy_t).view(1, 4).cpu().numpy()[0]
                             line = yolo_label_line(cls_id, xyxy_np, im0.shape, save_conf, float(conf_t) if save_conf else None)
                             lf.write(line + "\n")
-                # Save only the final stable frame's annotated image, then exit
-                annotated_path = annotated_dir / f"frame_{frame_idx:06d}.jpg"
+                annotated_path = annotated_dir / f"{stem}.jpg"
                 cv2.imwrite(str(annotated_path), annotated_img)
-                try:
-                    cv2.destroyAllWindows()
-                except Exception:
-                    pass
-                return
-            else:
-                # Show live preview without saving when not capturing
-                if view_img:
-                    window_name = f"{window_title_base} [{i}]"
-                    try:
-                        if not window_created.get(i, False):
-                            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-                            window_created[i] = True
-                    except Exception:
-                        pass
-                    try:
-                        cv2.imshow(window_name, annotated_img)
-                        if cv2.waitKey(1) & 0xFF == ord('q'):
-                            stop_requested = True
-                    except Exception:
-                        pass
 
-        if stop_requested:
+                # OFFLINE: build CSV rows and confusion pairs
+                actual = _parse_actual_from_name(p) or "unknown"
+                if parts == "bolt":
+                    detected_frames = [f"frame_{c}" for c in range(1, 7) if c in class_to_boxes and len(class_to_boxes[c]) > 0]
+                    if not detected_frames:
+                        detected_frames = ["frame_0"]
+                    bolt_count = len([b for b in class_to_boxes.get(0, []) if any(inside(b, f) for f in [fb for fc in [class_to_boxes.get(c, []) for c in [1,2,3,4,5,6]] for fb in fc])])
+                    summary = ""
+                    hard_pred_lbl = None
+                    soft_pred_lbl = None
+                    if len(crops_saved_paths) == 2 and 'per_crop_probs' in locals() and len(per_crop_probs) == 2:
+                        labels = []
+                        parts_txt = []
+                        for idx, prob in enumerate(per_crop_probs):
+                            pred_lbl = 'good' if per_crop_preds[idx] == 0 else 'bad'
+                            parts_txt.append(f"bolt{idx}:{pred_lbl}({prob[per_crop_preds[idx]]:.2f})")
+                            labels.append(pred_lbl)
+                        summary = ";".join(parts_txt)
+                        hard_pred_lbl = 'good' if all(l == 'good' for l in labels) else 'bad'
+                        if soft_vote_probs is not None:
+                            soft_pred_lbl = 'good' if int(np.argmax(soft_vote_probs)) == 0 else 'bad'
+                    else:
+                        if not any(f != "frame_0" for f in detected_frames):
+                            hard_pred_lbl = 'background'
+                            soft_pred_lbl = 'background'
+                        else:
+                            hard_pred_lbl = 'bad'
+                            soft_pred_lbl = 'bad'
+
+                    bolt_rows.append({
+                        "image_name": p.name,
+                        "detected_frames": ",".join(detected_frames),
+                        "detected_bolt_count": bolt_count,
+                        "bolt_results": summary,
+                        "actual_class": actual,
+                    })
+                    if actual in ("good", "bad") and hard_pred_lbl is not None and soft_pred_lbl is not None:
+                        hard_pairs.append((actual, hard_pred_lbl))
+                        soft_pairs.append((actual, soft_pred_lbl))
+                else:
+                    # door
+                    region_map = {0: "high", 1: "mid", 2: "low"}
+                    counts = [len(class_to_boxes.get(c, [])) for c in [0, 1, 2]]
+                    exactly_one_each = (counts == [1, 1, 1])
+                    fields = {
+                        "image_name": p.name,
+                        "actual_class": actual,
+                        "high_predict_class": "",
+                        "high_conf_0": "",
+                        "high_conf_1": "",
+                        "mid_predict_class": "",
+                        "mid_conf_0": "",
+                        "mid_conf_1": "",
+                        "low_predict_class": "",
+                        "low_conf_0": "",
+                        "low_conf_1": "",
+                    }
+                    hard_pred_lbl = None
+                    soft_pred_lbl = None
+                    rf_pred_lbl = None
+                    if exactly_one_each and 'region_probs' in locals() and len(region_probs) == 3:
+                        for region in ["high", "mid", "low"]:
+                            if region in region_preds and region in region_probs:
+                                pred_lbl = 'good' if region_preds[region] == 0 else 'bad'
+                                fields[f"{region}_predict_class"] = pred_lbl
+                                fields[f"{region}_conf_0"] = f"{region_probs[region][0]:.2f}"
+                                fields[f"{region}_conf_1"] = f"{region_probs[region][1]:.2f}"
+                        if 'hard_vote' in locals() and hard_vote is not None:
+                            hard_pred_lbl = 'good' if hard_vote == 0 else 'bad'
+                        if 'soft_vote' in locals() and soft_vote is not None:
+                            soft_pred_lbl = 'good' if soft_vote == 0 else 'bad'
+                        if 'rf_model' in locals() and rf_model is not None and 'rf_vote' in locals() and rf_vote is not None:
+                            rf_pred_lbl = 'good' if int(rf_vote) == 0 else 'bad'
+                    else:
+                        hard_pred_lbl = 'background'
+                        soft_pred_lbl = 'background'
+                        rf_pred_lbl = 'background'
+
+                    door_rows.append(fields)
+                    if actual in ("good", "bad") and hard_pred_lbl is not None and soft_pred_lbl is not None:
+                        hard_pairs.append((actual, hard_pred_lbl))
+                        soft_pairs.append((actual, soft_pred_lbl))
+                        if rf_pred_lbl is not None:
+                            rf_pairs.append((actual, rf_pred_lbl))
+
+        if is_webcam and stop_requested:
             # Attempt to gracefully close any OpenCV windows
             try:
                 cv2.destroyAllWindows()
@@ -720,6 +885,49 @@ def run_live_pipeline(config_path: Optional[str] = None):
             return
 
         # Optional: press Ctrl+C to stop; loop runs indefinitely for webcam
+
+    # OFFLINE: write CSV and confusion
+    if not is_webcam:
+        import csv
+        if parts == "bolt":
+            csv_path = out_dir / "results.csv"
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=[
+                    "image_name", "detected_frames", "detected_bolt_count", "bolt_results", "actual_class"
+                ])
+                writer.writeheader()
+                for row in bolt_rows:
+                    writer.writerow(row)
+        else:
+            csv_path = out_dir / "results.csv"
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=[
+                    "image_name",
+                    "high_predict_class", "high_conf_0", "high_conf_1",
+                    "mid_predict_class", "mid_conf_0", "mid_conf_1",
+                    "low_predict_class", "low_conf_0", "low_conf_1",
+                    "actual_class",
+                ])
+                writer.writeheader()
+                for row in door_rows:
+                    writer.writerow(row)
+
+        classes_y = ["good", "bad"]
+        classes_pred = ["good", "bad", "background"]
+        idx_y = {c: i for i, c in enumerate(classes_y)}
+        idx_p = {c: i for i, c in enumerate(classes_pred)}
+        cm_hard = np.zeros((len(classes_y), len(classes_pred)), dtype=int)
+        cm_soft = np.zeros((len(classes_y), len(classes_pred)), dtype=int)
+        cm_rf = np.zeros((len(classes_y), len(classes_pred)), dtype=int)
+        for a, p in hard_pairs:
+            cm_hard[idx_y[a], idx_p[p]] += 1
+        for a, p in soft_pairs:
+            cm_soft[idx_y[a], idx_p[p]] += 1
+        for a, p in rf_pairs:
+            cm_rf[idx_y[a], idx_p[p]] += 1
+        _save_confusion_outputs(cm_hard, classes_y, classes_pred, out_dir / "confusion_hard.png", out_dir / "confusion_hard.json")
+        _save_confusion_outputs(cm_soft, classes_y, classes_pred, out_dir / "confusion_soft.png", out_dir / "confusion_soft.json")
+        _save_confusion_outputs(cm_rf, classes_y, classes_pred, out_dir / "confusion_rf.png", out_dir / "confusion_rf.json")
 
 
 def main():
