@@ -65,6 +65,11 @@ def main():
                        help='Override batch size')
     parser.add_argument('--lr', type=float, default=None,
                        help='Override learning rate')
+    parser.add_argument('--scheduler', type=str, default=None,
+                       choices=['plateau', 'linear', 'cosine'],
+                       help='Learning rate scheduler type')
+    parser.add_argument('--lrf', type=float, default=None,
+                       help='Final learning rate factor for linear/cosine schedulers')
     # Tuning specific
     parser.add_argument('--trials', type=int, default=20,
                        help='Number of Optuna trials when mode is tune')
@@ -176,13 +181,20 @@ def main():
     
     if args.mode in ['train', 'train_evaluate']:
         print(f"\n🚀 Training {model_info['name']} model...")
+        
+        # 스케줄러 설정
+        scheduler_type = args.scheduler if args.scheduler else "plateau"
+        lrf = args.lrf if args.lrf else 0.01
+        
         history = train_model(
             model=model,
             config=config,
             epochs=training_info['epochs'],
             batch_size=training_info['batch_size'],
             learning_rate=training_info['learning_rate'],
-            output_dir=str(experiment_dir)
+            output_dir=str(experiment_dir),
+            scheduler_type=scheduler_type,
+            lrf=lrf
         )
         
         # Training plots are already created in train_model function
@@ -358,6 +370,20 @@ def main():
                             high_val
                         )
                 
+                # 모델 아키텍처 튜닝 추가
+                elif param_name == 'model_name':
+                    if param_type == 'categorical':
+                        model_choices = param_config.get('choices', [
+                            'resnet18',
+                            'resnet50', 
+                            'efficientnet',
+                            'mobilenet'
+                        ])
+                        sampled_params['model_name'] = trial.suggest_categorical(
+                            'model_name', 
+                            model_choices
+                        )
+                
                 # Transform 타입 튜닝 추가
                 elif param_name == 'transform_type':
                     if param_type == 'categorical':
@@ -371,6 +397,31 @@ def main():
                         sampled_params['transform_type'] = trial.suggest_categorical(
                             'transform_type', 
                             transform_choices
+                        )
+                
+                # 스케줄러 타입 튜닝 추가
+                elif param_name == 'scheduler_type':
+                    if param_type == 'categorical':
+                        scheduler_choices = param_config.get('choices', [
+                            'plateau',     # ReduceLROnPlateau
+                            'linear',      # 선형 스케줄러
+                            'cosine'       # 코사인 스케줄러
+                        ])
+                        sampled_params['scheduler_type'] = trial.suggest_categorical(
+                            'scheduler_type', 
+                            scheduler_choices
+                        )
+                
+                # 최종 학습률 비율 튜닝 추가
+                elif param_name == 'lrf':
+                    low_val = float(param_config['low'])
+                    high_val = float(param_config['high'])
+                    
+                    if param_type == 'uniform':
+                        sampled_params['lrf'] = trial.suggest_float(
+                            'lrf', 
+                            low_val, 
+                            high_val
                         )
             
             # Use sampled parameters or defaults from config
@@ -393,6 +444,9 @@ def main():
                 trial_config['training']['weight_decay'] = sampled_params['weight_decay']
             if 'dropout' in sampled_params:
                 trial_config['model']['dropout'] = sampled_params['dropout']
+            if 'model_name' in sampled_params:
+                # 모델 아키텍처 변경
+                trial_config['model']['name'] = sampled_params['model_name']
             if 'transform_type' in sampled_params:
                 # Transform 타입을 모든 split에 적용
                 transform_type = sampled_params['transform_type']
@@ -402,13 +456,14 @@ def main():
                 trial_config['dataset']['transforms']['val'] = transform_type
                 trial_config['dataset']['transforms']['test'] = transform_type
 
-            # Build model per trial
-            model = get_model(model_info['name'], dataset_info['num_classes'], model_info['pretrained'])
+            # Build model per trial (동적으로 모델 생성)
+            trial_model_name = sampled_params.get('model_name', model_info['name'])
+            trial_model = get_model(trial_model_name, dataset_info['num_classes'], model_info['pretrained'])
 
             # Train and report
             try:
                 _ = train_model(
-                    model=model,
+                    model=trial_model,
                     config=trial_config,
                     epochs=sampled_epochs,
                     batch_size=sampled_batch,
@@ -419,6 +474,8 @@ def main():
                     early_stopping=early_stopping_enabled,  # Early stopping 활성화
                     es_patience=es_patience,       # 10 에포크 patience
                     es_min_delta=es_min_delta,   # 최소 개선 임계값
+                    scheduler_type=sampled_params.get('scheduler_type', "plateau"),  # 튜닝 중에는 기본 스케줄러 사용
+                    lrf=sampled_params.get('lrf', 0.01)
                 )
             except Exception as e:
                 # In case of out-of-memory or other runtime errors, fail this trial gracefully
@@ -485,18 +542,30 @@ def main():
 
         # Final train_evaluate with best params
         print("\n🏁 Running final train_evaluate with best hyperparameters...")
+        
+        # 최적 모델 정보 출력
+        best_model_name = best_params.get('model_name', model_info['name'])
+        print(f"📊 최적 모델: {best_model_name}")
+        print(f"📊 최적 하이퍼파라미터:")
+        for key, value in best_params.items():
+            print(f"   {key}: {value}")
 
         # Prepare final config
         final_config = dict(config)
         final_config['training'] = dict(config['training'])
         final_config['training']['learning_rate'] = best_params.get('learning_rate', training_info['learning_rate'])
         final_config['training']['batch_size'] = best_params.get('batch_size', training_info['batch_size'])
+        
+        # 최적의 모델 아키텍처 적용
+        if 'model_name' in best_params:
+            final_config['model']['name'] = best_params['model_name']
 
         # Create a fresh experiment directory for final training
         final_experiment_dir = get_experiment_output_dir(final_config)
 
-        # Build model
-        final_model = get_model(model_info['name'], dataset_info['num_classes'], model_info['pretrained'])
+        # Build model (최적의 모델 아키텍처 사용)
+        final_model_name = best_params.get('model_name', model_info['name'])
+        final_model = get_model(final_model_name, dataset_info['num_classes'], model_info['pretrained'])
 
         # Train with early stopping and 300 epochs (default) using best hyperparameters
         _ = train_model(
@@ -509,6 +578,8 @@ def main():
             early_stopping=early_stopping_enabled,
             es_patience=es_patience,
             es_min_delta=es_min_delta,
+            scheduler_type=best_params.get('scheduler_type', "plateau"),  # 최종 훈련에서도 기본 스케줄러 사용
+            lrf=best_params.get('lrf', 0.01)
         )
 
         # Locate best model path and evaluate

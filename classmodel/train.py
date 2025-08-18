@@ -9,6 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from typing import Dict, Any, List, Tuple, Optional
 import json
+import math
 from pathlib import Path
 import time
 from tqdm import tqdm
@@ -16,6 +17,15 @@ from tqdm import tqdm
 from utils.dataset import create_data_loaders
 from utils.config import get_experiment_output_dir
 from utils.plot import plot_training_history, plot_learning_curves
+
+
+def one_cycle(y1=0.0, y2=1.0, steps=100):
+    """
+    Generates a lambda for a sinusoidal ramp from y1 to y2 over 'steps'.
+    
+    See https://arxiv.org/pdf/1812.01187.pdf for details.
+    """
+    return lambda x: ((1 - math.cos(x * math.pi / steps)) / 2) * (y2 - y1) + y1
 
 
 def train_model(
@@ -30,6 +40,8 @@ def train_model(
     early_stopping: bool = False,
     es_patience: int = 10,
     es_min_delta: float = 0.0,
+    scheduler_type: str = "plateau",  # "plateau", "linear", "cosine"
+    lrf: float = 0.01,  # final learning rate factor for linear/cosine schedulers
 ):
     """
     Train a classification model
@@ -41,6 +53,8 @@ def train_model(
         batch_size: Batch size
         learning_rate: Learning rate
         output_dir: Output directory
+        scheduler_type: Type of learning rate scheduler ("plateau", "linear", "cosine")
+        lrf: Final learning rate factor for linear/cosine schedulers
     
     Returns:
         history: Training history dictionary
@@ -85,13 +99,30 @@ def train_model(
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     
     # Learning rate scheduler
-    # Some torch versions do not support the 'verbose' argument
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode='max',
-        factor=0.5,
-        patience=5,
-    )
+    if scheduler_type == "plateau":
+        # 기존 ReduceLROnPlateau 스케줄러
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='max',
+            factor=0.5,
+            patience=5,
+        )
+        print(f"📈 Using ReduceLROnPlateau scheduler")
+    elif scheduler_type == "linear":
+        # YOLOv5 스타일 선형 스케줄러
+        def lf(x):
+            """Linear learning rate scheduler function with decay calculated by epoch proportion."""
+            return (1 - x / epochs) * (1.0 - lrf) + lrf  # linear
+        
+        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+        print(f"📈 Using Linear scheduler (lrf={lrf})")
+    elif scheduler_type == "cosine":
+        # YOLOv5 스타일 코사인 스케줄러
+        lf = one_cycle(1, lrf, epochs)  # cosine 1->lrf
+        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+        print(f"📈 Using Cosine scheduler (lrf={lrf})")
+    else:
+        raise ValueError(f"Unknown scheduler type: {scheduler_type}. Use 'plateau', 'linear', or 'cosine'")
     
     # Training history
     history = {
@@ -184,7 +215,10 @@ def train_model(
         val_acc = 100 * val_correct / val_total
         
         # Update learning rate
-        scheduler.step(val_acc)
+        if scheduler_type == "plateau":
+            scheduler.step(val_acc)  # ReduceLROnPlateau는 validation accuracy 필요
+        else:
+            scheduler.step()  # LambdaLR은 인자 불필요
         
         # Save history
         history['train_loss'].append(avg_train_loss)
